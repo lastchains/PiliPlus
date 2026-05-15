@@ -1,9 +1,13 @@
+import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart'
+    show RefreshIndicatorState;
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/common/common_list_controller.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:flutter/material.dart' hide RefreshIndicator, RefreshIndicatorState;
 
 class RcmdController extends CommonListController {
+  final refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
   late bool enableSaveLastData = Pref.enableSaveLastData;
   final bool appRcmd = Pref.appRcmd;
 
@@ -40,6 +44,16 @@ class RcmdController extends CommonListController {
         }
       }
     }
+  }
+
+  @override
+  bool showRefresh() {
+    final state = refreshIndicatorKey.currentState;
+    if (state != null) {
+      state.show();
+      return true;
+    }
+    return false;
   }
 
   @override
