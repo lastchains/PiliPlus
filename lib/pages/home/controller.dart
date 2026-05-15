@@ -59,7 +59,11 @@ class HomeController extends GetxController
 
   @override
   Future<void> onRefresh() {
-    return controller.onRefresh().catchError((e) {
+    final c = controller;
+    if (c.showRefresh() case true) {
+      return Future.value();
+    }
+    return c.onRefresh().catchError((e) {
       if (kDebugMode) debugPrint(e.toString());
     });
   }

@@ -369,15 +369,27 @@ class PlPlayerController with BlockConfigMixin {
   late final bool pipNoDanmaku = Pref.pipNoDanmaku;
 
   late final bool tempPlayerConf = Pref.tempPlayerConf;
+late final enableQuickDouble = Pref.enableQuickDouble;
 
   late int? cacheVideoQa = PlatformUtils.isMobile ? null : Pref.defaultVideoQa;
   late int cacheAudioQa = Pref.defaultAudioQa;
   bool enableHeart = true;
   late final String? hwdec = Pref.enableHA ? Pref.hardwareDecoding : null;
 
-  late final progressType = Pref.btmProgressBehavior;
-  late final enableQuickDouble = Pref.enableQuickDouble;
+late final progressType = Pref.btmProgressBehavior;
   late final fullScreenGestureReverse = Pref.fullScreenGestureReverse;
+
+  // 双击冷却计时器，防止双击后跟随的手势被覆盖
+  DateTime? _lastDoubleTapTime;
+  static const _doubleTapCooldown = Duration(milliseconds: 500);
+
+  /// 双击后是否处于冷却期（禁用双击识别器以避免干扰长按）
+  bool get isInDoubleTapCooldown {
+    if (_lastDoubleTapTime == null) return false;
+    return DateTime.now().difference(_lastDoubleTapTime!) < _doubleTapCooldown;
+  }
+
+
 
   late final isRelative = Pref.useRelativeSlide;
   late final offset = isRelative
@@ -1358,7 +1370,10 @@ class PlPlayerController with BlockConfigMixin {
       await videoPlayerController!.seek(Duration.zero);
       videoPlayerController!.play();
     } else {
-      videoPlayerController!.playOrPause();
+      // 如果正在长按手势中，则不执行播放/暂停切换，以避免与长按加速冲突
+      if (!longPressStatus.value) {
+        videoPlayerController!.playOrPause();
+      }
     }
   }
 
@@ -1389,6 +1404,7 @@ class PlPlayerController with BlockConfigMixin {
   }
 
   void doubleTapFuc(DoubleTapType type) {
+    _lastDoubleTapTime = DateTime.now();  // 新增：记录双击时间
     if (!enableQuickDouble) {
       onDoubleTapCenter();
       return;
@@ -1613,6 +1629,7 @@ class PlPlayerController with BlockConfigMixin {
     resetScreenRotation();
     cancelLongPressTimer();
     _cancelSubForSeek();
+    _lastDoubleTapTime = null;  // 新增：清理双击冷却计时器
     if (!_isCloseAll && _playerCount > 1) {
       _playerCount -= 1;
       _heartDuration = 0;

@@ -13,6 +13,8 @@ mixin ScrollOrRefreshMixin {
 
   Future<void> onRefresh();
 
+  bool showRefresh() => false;
+
   void toTopOrRefresh() {
     if (scrollController.hasClients) {
       if (scrollController.position.pixels == 0) {
