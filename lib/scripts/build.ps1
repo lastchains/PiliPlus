@@ -13,7 +13,7 @@ try {
         if ($line -match '^\s*version:\s*([\d\.]+)') {
             $versionName = $matches[1]
             if ($Arg -eq 'android') {
-                $versionName += '-' + $commitHash.Substring(0, 9)
+                $versionName += '-special-' + $commitHash.Substring(0, 9)
             }
             "version: $versionName+$versionCode"
         }
