@@ -1246,7 +1246,9 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       _tapGestureRecognizer.addPointer(event);
       if (controlsUnlock) {
         if (!plPlayerController.isLive) {
-          _doubleTapGestureRecognizer.addPointer(event);
+          if (!plPlayerController.isInDoubleTapCooldown) {
+            _doubleTapGestureRecognizer.addPointer(event);
+          }
           longPressRecognizer.addPointer(event);
         }
         if (_isPositionAllowed(event.localPosition)) {
@@ -1255,10 +1257,14 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       }
     } else if (controlsUnlock) {
       if (plPlayerController.isLive) {
-        _doubleTapGestureRecognizer.addPointer(event);
+        if (!plPlayerController.isInDoubleTapCooldown) {
+          _doubleTapGestureRecognizer.addPointer(event);
+        }
       } else {
         _tapGestureRecognizer.addPointer(event);
-        _doubleTapGestureRecognizer.addPointer(event);
+        if (!plPlayerController.isInDoubleTapCooldown) {
+          _doubleTapGestureRecognizer.addPointer(event);
+        }
         longPressRecognizer.addPointer(event);
       }
       _scaleGestureRecognizer.addPointer(event);
