@@ -19,8 +19,8 @@ try {
             $versionName = $matches[1]
             if ($Arg -eq 'android') {
                 if ($isDefaultSuffix) {
-                    # 默认行为：-special-短哈希（旧版 fork 格式）
-                    $versionName += '-special-' + $commitHash.Substring(0, 9)
+                    # 默认行为：-短哈希（上游兼容格式）
+                    $versionName += '-' + $commitHash.Substring(0, 9)
                 } else {
                     # 使用传入的后缀（一般为 -短哈希，如 '-ad6c0e0d1'）
                     $versionName += $Suffix
@@ -42,19 +42,20 @@ try {
 
     $buildTime = [int]([DateTimeOffset]::Now.ToUnixTimeSeconds())
 
-    # pili.name = 版本名（不带 code），外部后缀加在尾部
-    $piliName = "$versionName$VersionSuffix"
+    # 完整版本字符串（含 code 和 VersionSuffix），用于 About 页面显示
+    $fullVersion = "$versionName+$versionCode$VersionSuffix"
 
     $data = @{
-        'pili.name' = $piliName
+        'pili.name' = $versionName
         'pili.code' = $versionCode
         'pili.hash' = $commitHash
         'pili.time' = $buildTime
+        'pili.version' = $fullVersion
     }
 
     $data | ConvertTo-Json -Compress | Out-File 'pili_release.json' -Encoding UTF8
 
-    Add-Content -Path $env:GITHUB_ENV -Value "version=$versionName+$versionCode$VersionSuffix"
+    Add-Content -Path $env:GITHUB_ENV -Value "version=$fullVersion"
 }
 catch {
     Write-Error "Prebuild Error: $($_.Exception.Message)"

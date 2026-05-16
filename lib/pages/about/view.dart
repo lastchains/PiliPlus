@@ -37,8 +37,7 @@ class AboutPage extends StatefulWidget {
 }
 
 class _AboutPageState extends State<AboutPage> {
-  final currentVersion =
-      '${BuildConfig.versionName}+${BuildConfig.versionCode}';
+  final currentVersion = BuildConfig.version;
   RxString cacheSize = ''.obs;
 
   late int _pressCount = 0;
