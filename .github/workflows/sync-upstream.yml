@@ -222,31 +222,31 @@ jobs:
             VERSION_SUFFIX="-special-v${NEXT}"
             RELEASE_TAG="${BASE_TAG}-special-v${NEXT}"
             # 写入 Release 正文
-            cat > release_body.md <<EOF
-            🛠 **本地修改构建**
-
-            基于上游 **${BASE_TAG}** 的本地修改版本
-            构建次数：第 ${NEXT} 次
-
-            ### 📱 安装包
-            - **arm64-v8a** — 新 Android 设备（推荐）
-            - **armeabi-v7a** — 旧 Android 设备
-            - **x86_64** — 模拟器
-            EOF
+            {
+              echo "🛠 **本地修改构建**"
+              echo ""
+              echo "基于上游 **${BASE_TAG}** 的本地修改版本"
+              echo "构建次数：第 ${NEXT} 次"
+              echo ""
+              echo "### 📱 安装包"
+              echo "- **arm64-v8a** — 新 Android 设备（推荐）"
+              echo "- **armeabi-v7a** — 旧 Android 设备"
+              echo "- **x86_64** — 模拟器"
+            } > release_body.md
           else
             SUFFIX="-${SHORT_HASH}"
             VERSION_SUFFIX=""
             RELEASE_TAG="${{ needs.check.outputs.new_tag }}"
             # 写入 Release 正文
-            cat > release_body.md <<EOF
-            🤖 自动构建自 ${{ env.UPSTREAM_OWNER }}/${{ env.UPSTREAM_REPO }}
-            版本：${{ needs.check.outputs.new_tag }}
-
-            ### 📱 安装包
-            - **arm64-v8a** — 新 Android 设备（推荐）
-            - **armeabi-v7a** — 旧 Android 设备
-            - **x86_64** — 模拟器
-            EOF
+            {
+              echo "🤖 自动构建自 ${{ env.UPSTREAM_OWNER }}/${{ env.UPSTREAM_REPO }}"
+              echo "版本：${{ needs.check.outputs.new_tag }}"
+              echo ""
+              echo "### 📱 安装包"
+              echo "- **arm64-v8a** — 新 Android 设备（推荐）"
+              echo "- **armeabi-v7a** — 旧 Android 设备"
+              echo "- **x86_64** — 模拟器"
+            } > release_body.md
           fi
           echo "suffix=${SUFFIX}" >> "$GITHUB_OUTPUT"
           echo "version_suffix=${VERSION_SUFFIX}" >> "$GITHUB_OUTPUT"
