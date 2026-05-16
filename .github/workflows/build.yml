@@ -94,10 +94,28 @@ jobs:
                     echo keyPassword='${{ secrets.KEY_PASSWORD }}' >> android/key.properties
                   fi
 
+            - name: 计算版本信息
+              id: calc_version
+              shell: bash
+              run: |
+                SHORT_HASH=$(git rev-parse --short=9 HEAD)
+                echo "short_hash=${SHORT_HASH}" >> "$GITHUB_OUTPUT"
+                VERSION_NAME=$(grep '^version:' pubspec.yaml | sed 's/version: *//' | sed 's/+.*//')
+                VERSION_CODE=$(git rev-list --count HEAD)
+                TAG_BASE="${VERSION_NAME}.${VERSION_CODE}"
+                echo "version_base=${TAG_BASE}" >> "$GITHUB_OUTPUT"
+                HIGHEST=$(git tag -l "${TAG_BASE}-special-v*" | sed 's/.*-special-v//' | sort -n | tail -1)
+                if [ -z "$HIGHEST" ]; then
+                  NEXT=1
+                else
+                  NEXT=$((HIGHEST + 1))
+                fi
+                echo "version_suffix=-special-v${NEXT}" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG_BASE}-special-v${NEXT}" >> "$GITHUB_OUTPUT"
+
             - name: Set and Extract version
-              if: ${{ github.event_name == 'workflow_dispatch' }}
               shell: pwsh
-              run: lib/scripts/build.ps1 android
+              run: lib/scripts/build.ps1 android -Suffix "-${{ steps.calc_version.outputs.short_hash }}" -VersionSuffix "${{ steps.calc_version.outputs.version_suffix }}"
 
             - name: Flutter Build Release Apk
               if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -106,7 +124,7 @@ jobs:
             - name: Flutter Build Dev Apk
               if: ${{ github.event_name == 'pull_request' }}
               run: |
-                flutter build apk --release --split-per-abi --android-project-arg dev=1 --pub
+                flutter build apk --release --split-per-abi --android-project-arg dev=1 --dart-define-from-file=pili_release.json --pub
 
             - name: Rename
               run: |
@@ -117,11 +135,11 @@ jobs:
               shell: bash
 
             - name: Release
-              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+              if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '') }}
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ github.event.inputs.tag }}
-                  name: ${{ github.event.inputs.tag }}
+                  tag_name: ${{ steps.calc_version.outputs.tag_name }}
+                  name: ${{ steps.calc_version.outputs.tag_name }}
                   files: PiliPlus_android_*.apk
 
             - name: 上传
