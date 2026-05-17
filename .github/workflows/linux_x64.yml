@@ -122,57 +122,57 @@ jobs:
           tar -zcvf "$RPM_BUILD_ROOT/SOURCES/piliplus-${{ env.version }}.tar.gz" -C "$PWD" "piliplus-${{ env.version }}"
 
           printf "生成 spec 文件...\n"
-          cat > "$RPM_BUILD_ROOT/SPECS/piliplus.spec" <<EOF
-          Name:           piliplus
-          Version:        ${{ env.version }}
-          Release:        1%{?dist}
-          Summary:        PiliPlus Linux Version
-          License:        GPL-3.0
-          Source0:        piliplus-${{ env.version }}.tar.gz
-          Requires:       desktop-file-utils, hicolor-icon-theme
-
-          %description
-          使用 Flutter 开发的 BiliBili 第三方客户端
-
-          %prep
-          %setup -q -n piliplus-${{ env.version }}
-
-          %build
-
-          %install
-          mkdir -p %{buildroot}/opt/PiliPlus
-          cp -r bundle/* %{buildroot}/opt/PiliPlus/
-
-          # 二进制权限与命令行入口
-          chmod 755 %{buildroot}/opt/PiliPlus/piliplus
-          mkdir -p %{buildroot}/usr/bin
-          ln -sf /opt/PiliPlus/piliplus %{buildroot}/usr/bin/piliplus
-
-          # 桌面集成
-          mkdir -p %{buildroot}/usr/share/applications
-          install -m 644 assets/com.example.piliplus.desktop %{buildroot}/usr/share/applications/com.example.piliplus.desktop
-
-          mkdir -p %{buildroot}/usr/share/icons/hicolor/512x512/apps
-          install -m 644 assets/piliplus.png %{buildroot}/usr/share/icons/hicolor/512x512/apps/piliplus.png
-
-          %post
-          update-desktop-database -q || true
-          gtk-update-icon-cache -q -t -f %{_datadir}/icons/hicolor || true
-
-          %postun
-          update-desktop-database -q || true
-          gtk-update-icon-cache -q -t -f %{_datadir}/icons/hicolor || true
-
-          %files
-          /opt/PiliPlus
-          /usr/bin/piliplus
-          /usr/share/applications/com.example.piliplus.desktop
-          /usr/share/icons/hicolor/512x512/apps/piliplus.png
-
-          %changelog
-          * DATE - ${{ env.version }}-1
-          - Initial RPM release
-          EOF
+          {
+            printf 'Name:           piliplus\n'
+            printf 'Version:        %s\n' "${{ env.version }}"
+            printf 'Release:        1%%{?dist}\n'
+            printf 'Summary:        PiliPlus Linux Version\n'
+            printf 'License:        GPL-3.0\n'
+            printf 'Source0:        piliplus-%s.tar.gz\n' "${{ env.version }}"
+            printf 'Requires:       desktop-file-utils, hicolor-icon-theme\n'
+            printf '\n'
+            printf '%%description\n'
+            printf '使用 Flutter 开发的 BiliBili 第三方客户端\n'
+            printf '\n'
+            printf '%%prep\n'
+            printf '%%setup -q -n piliplus-%s\n' "${{ env.version }}"
+            printf '\n'
+            printf '%%build\n'
+            printf '\n'
+            printf '%%install\n'
+            printf 'mkdir -p %%{buildroot}/opt/PiliPlus\n'
+            printf 'cp -r bundle/* %%{buildroot}/opt/PiliPlus/\n'
+            printf '\n'
+            printf '# 二进制权限与命令行入口\n'
+            printf 'chmod 755 %%{buildroot}/opt/PiliPlus/piliplus\n'
+            printf 'mkdir -p %%{buildroot}/usr/bin\n'
+            printf 'ln -sf /opt/PiliPlus/piliplus %%{buildroot}/usr/bin/piliplus\n'
+            printf '\n'
+            printf '# 桌面集成\n'
+            printf 'mkdir -p %%{buildroot}/usr/share/applications\n'
+            printf 'install -m 644 assets/com.example.piliplus.desktop %%{buildroot}/usr/share/applications/com.example.piliplus.desktop\n'
+            printf '\n'
+            printf 'mkdir -p %%{buildroot}/usr/share/icons/hicolor/512x512/apps\n'
+            printf 'install -m 644 assets/piliplus.png %%{buildroot}/usr/share/icons/hicolor/512x512/apps/piliplus.png\n'
+            printf '\n'
+            printf '%%post\n'
+            printf 'update-desktop-database -q || true\n'
+            printf 'gtk-update-icon-cache -q -t -f %%{_datadir}/icons/hicolor || true\n'
+            printf '\n'
+            printf '%%postun\n'
+            printf 'update-desktop-database -q || true\n'
+            printf 'gtk-update-icon-cache -q -t -f %%{_datadir}/icons/hicolor || true\n'
+            printf '\n'
+            printf '%%files\n'
+            printf '/opt/PiliPlus\n'
+            printf '/usr/bin/piliplus\n'
+            printf '/usr/share/applications/com.example.piliplus.desktop\n'
+            printf '/usr/share/icons/hicolor/512x512/apps/piliplus.png\n'
+            printf '\n'
+            printf '%%changelog\n'
+            printf '* DATE - %s-1\n' "${{ env.version }}"
+            printf '- Initial RPM release\n'
+          } > "$RPM_BUILD_ROOT/SPECS/piliplus.spec"
 
           sed -i "s/DATE/${DATE}/g" "$RPM_BUILD_ROOT/SPECS/piliplus.spec"
 

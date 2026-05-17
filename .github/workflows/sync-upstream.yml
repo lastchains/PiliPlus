@@ -284,12 +284,12 @@ jobs:
         run: |
           if [ -n "${{ secrets.SIGN_KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.SIGN_KEYSTORE_BASE64 }}" | base64 --decode > android/app/key.jks
-            cat >> android/key.properties <<EOF
-            storeFile=key.jks
-            storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-            keyAlias=${{ secrets.KEY_ALIAS }}
-            keyPassword=${{ secrets.KEY_PASSWORD }}
-            EOF
+            {
+              echo "storeFile=key.jks"
+              echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+              echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+              echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            } >> android/key.properties
           fi
 
       - name: 生成构建版本号
