@@ -1,0 +1,90 @@
+# =============================================================================
+# 可复用 Workflow：Windows 构建（用于上游同步流程）
+# 被 sync-upstream.yml 调用，将产物追加到已有 Release
+# =============================================================================
+name: Build Windows (for Sync Upstream)
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: 'Release Tag（追加到已有 Release）'
+        required: true
+        type: string
+      suffix:
+        description: '版本后缀'
+        required: true
+        type: string
+      version_suffix:
+        description: '构建版本后缀'
+        required: true
+        type: string
+
+jobs:
+  build_windows:
+    name: 🪟 构建 Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: 应用 Flutter Patch
+        shell: pwsh
+        run: lib/scripts/patch.ps1 windows
+        continue-on-error: true
+
+      - name: 安装 fastforge 和 Inno Setup
+        run: |
+          dart pub global activate fastforge
+          choco install innosetup
+
+      - name: 添加 Inno Setup 中文语言文件
+        shell: pwsh
+        run: |
+          Copy-Item "windows/packaging/exe/ChineseSimplified.isl" `
+            "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+
+      - name: 设置版本号
+        shell: pwsh
+        run: |
+          lib/scripts/build.ps1 windows `
+            -Suffix "${{ inputs.suffix }}" `
+            -VersionSuffix "${{ inputs.version_suffix }}"
+
+      - name: 构建 Windows
+        run: |
+          fastforge package --platform windows --targets exe --flutter-build-args="dart-define-from-file=pili_release.json"
+
+      - name: 准备上传
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path Release/PiliPlus-Win -Force
+          New-Item -ItemType Directory -Path PiliPlus-Win-Setup -Force
+          Copy-Item -Path "build/windows/x64/runner/Release/*" -Destination "Release/PiliPlus-Win/" -Recurse
+          Get-ChildItem -Path "dist" -Recurse -Filter "*.exe" | `
+            ForEach-Object { Copy-Item $_.FullName "PiliPlus-Win-Setup/PiliPlus_windows_$env:version_x64_setup.exe" }
+
+      - name: 压缩便携版
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "Release/PiliPlus-Win" -DestinationPath "PiliPlus_windows_$env:version_x64_portable.zip"
+
+      - name: 上传到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: |
+            PiliPlus_windows_*.zip
+            PiliPlus-Win-Setup/PiliPlus_windows_*.exe
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

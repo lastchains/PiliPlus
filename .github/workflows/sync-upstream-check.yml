@@ -1,0 +1,96 @@
+# =============================================================================
+# 可复用 Workflow：检测上游版本更新
+# 被 sync-upstream.yml 调用，支持 workflow_dispatch 单独使用
+# =============================================================================
+name: Check Upstream Version
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: '待检测的 Tag（空=自动获取上游最新）'
+        required: false
+        default: ''
+        type: string
+      build_mode:
+        description: '构建模式: sync | local'
+        required: false
+        default: 'sync'
+        type: string
+      upstream_owner:
+        description: '上游仓库 Owner'
+        required: false
+        default: 'bggRGjQaUbCoE'
+        type: string
+      upstream_repo:
+        description: '上游仓库 Repo'
+        required: false
+        default: 'PiliPlus'
+        type: string
+    outputs:
+      new_tag:
+        description: '解析到的 Tag'
+        value: ${{ jobs.check.outputs.new_tag }}
+      has_update:
+        description: '是否有更新 (true/false)'
+        value: ${{ jobs.check.outputs.has_update }}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '待检测的 Tag（留空自动获取上游最新）'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  check:
+    name: 🔍 解析版本
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.resolve.outputs.result }}
+      has_update: ${{ steps.check_mode.outputs.has_update }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 获取最新 Release Tag
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          retries: 3
+          script: |
+            const tag = '${{ inputs.tag != '' && inputs.tag || github.event.inputs.tag }}';
+            if (tag) return tag;
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: '${{ inputs.upstream_owner }}',
+              repo: '${{ inputs.upstream_repo }}',
+              per_page: 1,
+            });
+            return releases[0]?.tag_name || '';
+
+      - name: 判断模式并检查是否可构建
+        id: check_mode
+        run: |
+          BUILD_MODE='${{ inputs.build_mode }}'
+          if [ -z "$BUILD_MODE" ]; then
+            BUILD_MODE='${{ github.event.inputs.build_mode }}'
+          fi
+          if [ "$BUILD_MODE" == "local" ]; then
+            echo "🛠 本地修改构建模式"
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TAG="${{ steps.resolve.outputs.result }}"
+          if [ -z "$TAG" ]; then
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git tag -l "$TAG" | grep -q .; then
+            echo "Tag '$TAG' 已存在，跳过"
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "发现新版本: $TAG"
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+          fi

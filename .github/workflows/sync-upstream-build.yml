@@ -1,0 +1,288 @@
+# =============================================================================
+# 可复用 Workflow：同步上游 + Android 构建 + GitHub Release
+# 被 sync-upstream.yml 调用
+# =============================================================================
+name: Sync Upstream & Android Build
+
+on:
+  workflow_call:
+    inputs:
+      new_tag:
+        description: '上游版本 Tag'
+        required: true
+        type: string
+      build_mode:
+        description: '构建模式: sync | local'
+        required: false
+        default: 'sync'
+        type: string
+      upstream_owner:
+        description: '上游仓库 Owner'
+        required: false
+        default: 'bggRGjQaUbCoE'
+        type: string
+      upstream_repo:
+        description: '上游仓库 Repo'
+        required: false
+        default: 'PiliPlus'
+        type: string
+    outputs:
+      release_tag:
+        description: '最终 Release Tag'
+        value: ${{ jobs.sync_build.outputs.release_tag }}
+      should_build:
+        description: '是否继续构建 (true/false)'
+        value: ${{ jobs.sync_build.outputs.should_build }}
+      suffix:
+        description: '版本后缀'
+        value: ${{ jobs.sync_build.outputs.suffix }}
+      version_suffix:
+        description: '构建版本后缀'
+        value: ${{ jobs.sync_build.outputs.version_suffix }}
+
+jobs:
+  sync_build:
+    name: 🔄 同步并构建 Android
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.version_info.outputs.release_tag }}
+      should_build: ${{ steps.build_gate.outputs.should_build }}
+      suffix: ${{ steps.version_info.outputs.suffix }}
+      version_suffix: ${{ steps.version_info.outputs.version_suffix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 配置 Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # ────────────────────────────────────────
+      # 上游同步（仅 sync 模式）
+      # ────────────────────────────────────────
+      - name: 添加上游仓库并拉取
+        if: inputs.build_mode != 'local'
+        run: |
+          git remote add upstream \
+            https://github.com/${{ inputs.upstream_owner }}/${{ inputs.upstream_repo }}.git
+          git fetch upstream main --tags --force
+
+      - name: 合并上游 main 到本地 main
+        id: merge
+        if: inputs.build_mode != 'local'
+        run: |
+          if git merge upstream/main --no-edit 2>&1; then
+            echo "merge_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "merge_ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ────────────────────────────────────────
+      # 冲突处理（仅 sync 模式）
+      # ────────────────────────────────────────
+      - name: 检测冲突文件
+        id: conflict
+        if: steps.merge.outputs.merge_ok == 'false'
+        run: |
+          CONFLICT_FILES=$(git diff --name-only --diff-filter=U || true)
+          if [ -z "$CONFLICT_FILES" ]; then
+            git merge --abort 2>/dev/null || true
+            echo "has_conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_conflict=true" >> "$GITHUB_OUTPUT"
+            echo "conflict_files=$(echo "$CONFLICT_FILES" | tr '\n' ',')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 创建冲突 Issue
+        if: steps.conflict.outputs.has_conflict == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ inputs.new_tag }}';
+            const files = '${{ steps.conflict.outputs.conflict_files }}';
+            const fileList = files.split(',').join('\n');
+            const body = [
+              '## 🔀 合并冲突，需手动处理',
+              '',
+              `上游 **${{ inputs.upstream_owner }}/${{ inputs.upstream_repo }}** 发布了 **${tag}**，自动合并时产生冲突。`,
+              '',
+              '### 冲突文件',
+              '```',
+              fileList,
+              '```',
+              '',
+              '### 解决步骤',
+              '1. 手动合并上游 main 分支并解决上述文件冲突',
+              '2. 提交解决后的代码到 main',
+              '3. 在 Actions 面板选择 local 模式并输入 tag 参数完成构建',
+              '',
+              '---',
+              '🤖 此 Issue 由自动化工作流自动创建',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔀 上游 ${tag} 同步冲突，需要手动合并`,
+              body: body,
+              labels: ['sync', 'conflict'],
+            });
+
+      # ────────────────────────────────────────
+      # 构建决策门
+      # ────────────────────────────────────────
+      - name: 判断是否继续构建
+        id: build_gate
+        shell: bash
+        run: |
+          if [ "${{ inputs.build_mode }}" == "local" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.merge.outputs.merge_ok }}" == "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ────────────────────────────────────────
+      # 推送 + 计算版本 + 构建 + 发布
+      # ────────────────────────────────────────
+      - name: 推送到 main 分支
+        if: steps.build_gate.outputs.should_build == 'true' && inputs.build_mode != 'local'
+        run: git push origin main
+
+      - name: 确定版本后缀和 Release Tag
+        id: version_info
+        if: steps.build_gate.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          SHORT_HASH=$(git rev-parse --short=9 HEAD)
+          if [ "${{ inputs.build_mode }}" == "local" ]; then
+            BASE_TAG="${{ inputs.new_tag }}"
+            if [ -z "$BASE_TAG" ]; then
+              echo "❌ 无法获取基准 Tag，请在手动触发时填写 tag 参数"
+              exit 1
+            fi
+            HIGHEST=$(git tag -l "${BASE_TAG}-special-v*" | sed 's/.*-special-v//' | sort -n | tail -1)
+            if [ -z "$HIGHEST" ]; then
+              NEXT=1
+            else
+              NEXT=$((HIGHEST + 1))
+            fi
+            SUFFIX="-${SHORT_HASH}"
+            VERSION_SUFFIX="-special-v${NEXT}"
+            RELEASE_TAG="${BASE_TAG}-special-v${NEXT}"
+            {
+              echo "🛠 **本地修改构建**"
+              echo ""
+              echo "基于上游 **${BASE_TAG}** 的本地修改版本"
+              echo "构建次数：第 ${NEXT} 次"
+              echo ""
+              echo "### 📱 安装包"
+              echo "- **arm64-v8a** — 新 Android 设备（推荐）"
+              echo "- **armeabi-v7a** — 旧 Android 设备"
+              echo "- **x86_64** — 模拟器"
+              echo ""
+              echo "### 🪟 Windows"
+              echo "- **便携版 (.zip)** — 解压即用"
+              echo "- **安装程序 (.exe)** — Inno Setup 安装包"
+            } > release_body.md
+          else
+            SUFFIX="-${SHORT_HASH}"
+            VERSION_SUFFIX=""
+            RELEASE_TAG="${{ inputs.new_tag }}"
+            {
+              echo "🤖 自动构建自 ${{ inputs.upstream_owner }}/${{ inputs.upstream_repo }}"
+              echo "版本：${{ inputs.new_tag }}"
+              echo ""
+              echo "### 📱 安装包"
+              echo "- **arm64-v8a** — 新 Android 设备（推荐）"
+              echo "- **armeabi-v7a** — 旧 Android 设备"
+              echo "- **x86_64** — 模拟器"
+              echo ""
+              echo "### 🪟 Windows"
+              echo "- **便携版 (.zip)** — 解压即用"
+              echo "- **安装程序 (.exe)** — Inno Setup 安装包"
+            } > release_body.md
+          fi
+          echo "suffix=${SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "version_suffix=${VERSION_SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+      # ────────────────────────────────────────
+      # 构建 & 发布阶段
+      # ────────────────────────────────────────
+      - name: 设置 Java 环境
+        if: steps.build_gate.outputs.should_build == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+          cache-dependency-path: |
+            android/*.gradle*
+            android/**/gradle-wrapper.properties
+
+      - name: 安装 Flutter
+        if: steps.build_gate.outputs.should_build == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: 应用 Flutter Patch
+        if: steps.build_gate.outputs.should_build == 'true'
+        shell: pwsh
+        run: lib/scripts/patch.ps1 android
+        continue-on-error: true
+
+      - name: 写入签名密钥（如有配置）
+        if: steps.build_gate.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.SIGN_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.SIGN_KEYSTORE_BASE64 }}" | base64 --decode > android/app/key.jks
+            {
+              echo "storeFile=key.jks"
+              echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+              echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+              echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            } >> android/key.properties
+          fi
+
+      - name: 生成构建版本号
+        if: steps.build_gate.outputs.should_build == 'true'
+        shell: pwsh
+        run: lib/scripts/build.ps1 android -Suffix "${{ steps.version_info.outputs.suffix }}" -VersionSuffix "${{ steps.version_info.outputs.version_suffix }}"
+
+      - name: 构建 Android Release APK
+        if: steps.build_gate.outputs.should_build == 'true'
+        run: flutter build apk --release --split-per-abi --dart-define-from-file=pili_release.json --pub
+
+      - name: 重命名 APK 文件
+        if: steps.build_gate.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          for file in build/app/outputs/flutter-apk/app-*-release.apk; do
+            [ -f "$file" ] || continue
+            abi=$(echo "$file" | sed -E 's|.*app-(.*)-release\.apk|\1|')
+            mv "$file" "PiliPlus_android_${{ env.version }}_${abi}.apk"
+          done
+
+      - name: 发布 GitHub Release
+        if: steps.build_gate.outputs.should_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version_info.outputs.release_tag }}
+          name: ${{ steps.version_info.outputs.release_tag }}
+          body_path: release_body.md
+          files: PiliPlus_android_*.apk
+          fail_on_unmatched_files: false
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
