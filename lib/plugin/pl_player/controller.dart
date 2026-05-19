@@ -582,6 +582,7 @@ late final progressType = Pref.btmProgressBehavior;
           .onOrientationChanged(
             useSensor: Platform.isAndroid,
             checkIsAutoRotate: checkIsAutoRotate,
+            angleDegrees: Platform.isAndroid ? Pref.angleDegrees : null,
           )
           .listen(_onOrientationChanged);
     }
